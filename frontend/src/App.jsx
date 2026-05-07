@@ -8,14 +8,15 @@ function App() {
   const [message, setMessage] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
   const [subtitleUrl, setSubtitleUrl] = useState(null)
+  // Yeni State: Çeviri yapılsın mı?
+  const [translateTr, setTranslateTr] = useState(false)
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0]
     setFile(selectedFile)
     setMessage('')
-    setSubtitleUrl(null) // Yeni video seçildiğinde eski altyazıyı temizle
+    setSubtitleUrl(null)
 
-    // Videoyu tarayıcıda izleyebilmek için geçici bir link oluştur
     if (selectedFile) {
       setVideoUrl(URL.createObjectURL(selectedFile))
     }
@@ -28,17 +29,19 @@ function App() {
     }
 
     setLoading(true)
-    setMessage('Video işleniyor, bu işlem videonun uzunluğuna göre biraz sürebilir...')
+    setMessage(translateTr
+      ? 'Video işleniyor ve Türkçeye çevriliyor, lütfen bekleyin...'
+      : 'Video işleniyor, lütfen bekleyin...')
 
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('translate_to_tr', translateTr) // Python'a çeviri kararını gönderiyoruz
 
     try {
       const response = await axios.post('http://127.0.0.1:8000/upload-video/', formData, {
-        responseType: 'blob', // Backend'den dosya beklediğimizi belirtiyoruz
+        responseType: 'blob',
       })
 
-      // Gelen VTT dosyasını tarayıcıda okunabilir bir URL'ye çeviriyoruz
       const vttBlob = new Blob([response.data], { type: 'text/vtt' })
       const vttUrl = URL.createObjectURL(vttBlob)
       setSubtitleUrl(vttUrl)
@@ -59,6 +62,18 @@ function App() {
 
       <div className="upload-box">
         <input type="file" accept="video/mp4,video/x-m4v,video/*" onChange={handleFileChange} />
+
+        {/* Çeviri Seçeneği Kutucuğu */}
+        <div className="checkbox-container">
+          <input
+            type="checkbox"
+            id="translateToggle"
+            checked={translateTr}
+            onChange={(e) => setTranslateTr(e.target.checked)}
+          />
+          <label htmlFor="translateToggle">İngilizce altyazıyı doğrudan Türkçe'ye çevir</label>
+        </div>
+
         <button onClick={handleUpload} disabled={loading || !file}>
           {loading ? 'İşleniyor...' : 'Altyazı Çıkar'}
         </button>
@@ -66,27 +81,22 @@ function App() {
 
       {message && <p className="message">{message}</p>}
 
-      {/* Video seçildiği an bu oynatıcı görünür olur */}
       {videoUrl && (
         <div className="video-player-box">
-          {/* key değeri subtitleUrl değiştiğinde oynatıcının güncellenmesini zorlar */}
           <video controls width="100%" key={subtitleUrl}>
             <source src={videoUrl} type={file?.type || 'video/mp4'} />
-
-            {/* Altyazı hazır olduğunda track etiketi devreye girer */}
             {subtitleUrl && (
               <track
                 kind="subtitles"
                 src={subtitleUrl}
-                srcLang="en"
-                label="English"
+                srcLang={translateTr ? "tr" : "en"}
+                label={translateTr ? "Türkçe" : "English"}
                 default
               />
             )}
             Tarayıcınız video etiketini desteklemiyor.
           </video>
 
-          {/* İsteğe bağlı indirme butonu */}
           {subtitleUrl && (
             <a href={subtitleUrl} download="altyazi.vtt" className="download-btn">
               Altyazıyı Bilgisayara İndir (.vtt)
