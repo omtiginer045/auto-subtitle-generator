@@ -6,10 +6,19 @@ function App() {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [videoUrl, setVideoUrl] = useState(null)
+  const [subtitleUrl, setSubtitleUrl] = useState(null)
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0])
+    const selectedFile = e.target.files[0]
+    setFile(selectedFile)
     setMessage('')
+    setSubtitleUrl(null) // Yeni video seçildiğinde eski altyazıyı temizle
+
+    // Videoyu tarayıcıda izleyebilmek için geçici bir link oluştur
+    if (selectedFile) {
+      setVideoUrl(URL.createObjectURL(selectedFile))
+    }
   }
 
   const handleUpload = async () => {
@@ -25,21 +34,16 @@ function App() {
     formData.append('file', file)
 
     try {
-      // Python API'mize dosyayı gönderiyoruz
       const response = await axios.post('http://127.0.0.1:8000/upload-video/', formData, {
-        responseType: 'blob', // Gelen yanıtın bir dosya (.srt) olduğunu belirtiyoruz
+        responseType: 'blob', // Backend'den dosya beklediğimizi belirtiyoruz
       })
 
-      // Gelen SRT dosyasını otomatik olarak indirme işlemi
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', 'altyazi.srt')
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      // Gelen VTT dosyasını tarayıcıda okunabilir bir URL'ye çeviriyoruz
+      const vttBlob = new Blob([response.data], { type: 'text/vtt' })
+      const vttUrl = URL.createObjectURL(vttBlob)
+      setSubtitleUrl(vttUrl)
 
-      setMessage('İşlem başarılı! Altyazı dosyası indirildi.')
+      setMessage('İşlem başarılı! Videoyu altyazılı olarak izleyebilirsiniz.')
     } catch (error) {
       console.error(error)
       setMessage('Bir hata oluştu. Backend sunucusunun çalıştığından emin olun.')
@@ -51,7 +55,7 @@ function App() {
   return (
     <div className="container">
       <h1>Otomatik Altyazı Oluşturucu</h1>
-      <p>İngilizce videonuzu yükleyin, .srt dosyanızı saniyeler içinde alın.</p>
+      <p>İngilizce videonuzu yükleyin, anında altyazılı izleyin.</p>
 
       <div className="upload-box">
         <input type="file" accept="video/mp4,video/x-m4v,video/*" onChange={handleFileChange} />
@@ -61,6 +65,35 @@ function App() {
       </div>
 
       {message && <p className="message">{message}</p>}
+
+      {/* Video seçildiği an bu oynatıcı görünür olur */}
+      {videoUrl && (
+        <div className="video-player-box">
+          {/* key değeri subtitleUrl değiştiğinde oynatıcının güncellenmesini zorlar */}
+          <video controls width="100%" key={subtitleUrl}>
+            <source src={videoUrl} type={file?.type || 'video/mp4'} />
+
+            {/* Altyazı hazır olduğunda track etiketi devreye girer */}
+            {subtitleUrl && (
+              <track
+                kind="subtitles"
+                src={subtitleUrl}
+                srcLang="en"
+                label="English"
+                default
+              />
+            )}
+            Tarayıcınız video etiketini desteklemiyor.
+          </video>
+
+          {/* İsteğe bağlı indirme butonu */}
+          {subtitleUrl && (
+            <a href={subtitleUrl} download="altyazi.vtt" className="download-btn">
+              Altyazıyı Bilgisayara İndir (.vtt)
+            </a>
+          )}
+        </div>
+      )}
     </div>
   )
 }
