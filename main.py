@@ -1,9 +1,24 @@
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from faster_whisper import WhisperModel
 import time
+import os
+
+# FastAPI uygulamasını başlatıyoruz
+app = FastAPI(title="Auto Subtitle API")
+
+# İleride React'in (farklı bir portta çalışacağı için) bu API'ye erişebilmesi için CORS ayarları
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Geliştirme aşamasında her yere açık
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def format_time(seconds):
-    """Saniyeyi standart SRT zaman formatına (HH:MM:SS,mmm) dönüştürür."""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     seconds_int = int(seconds % 60)
@@ -12,45 +27,35 @@ def format_time(seconds):
 
 
 def generate_subtitles(video_path, output_filename="altyazi.srt"):
-    # Hala işlemci (CPU) üzerinden devam ediyoruz
     model_size = "small"
-
-    print(f"[{model_size}] modeli CPU üzerine yükleniyor, lütfen bekleyin...")
+    print(f"[{model_size}] modeli CPU üzerine yükleniyor...")
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-
-    print("Model yüklendi. Video işleniyor...")
-    start_time = time.time()
 
     segments, info = model.transcribe(video_path, beam_size=5)
 
-    print(f"Algılanan dil: {info.language} (Olasılık: %{info.language_probability * 100:.2f})")
-    print("-" * 50)
-
-    # SRT dosyasını oluşturma ve yazma aşaması
     with open(output_filename, "w", encoding="utf-8") as srt_file:
         for index, segment in enumerate(segments, start=1):
-            # Zaman damgalarını SRT formatına çevir
-            start_time_str = format_time(segment.start)
-            end_time_str = format_time(segment.end)
-
-            # 1. Altyazı Sıra Numarasını Yazdır
             srt_file.write(f"{index}\n")
-
-            # 2. Zaman Aralığını Yazdır
-            srt_file.write(f"{start_time_str} --> {end_time_str}\n")
-
-            # 3. Altyazı Metnini Yazdır
+            srt_file.write(f"{format_time(segment.start)} --> {format_time(segment.end)}\n")
             srt_file.write(f"{segment.text.strip()}\n\n")
 
-            # İşlemi takip edebilmek için terminale de yansıt
-            print(f"Yazılıyor: [{start_time_str} -> {end_time_str}]")
 
-    end_time = time.time()
-    print("-" * 50)
-    print(f"İşlem tamamlandı! '{output_filename}' dosyası proje klasörüne oluşturuldu.")
-    print(f"Toplam süre: {end_time - start_time:.2f} saniye")
+# --- YENİ API UÇ NOKTASI (ENDPOINT) ---
+@app.post("/upload-video/")
+async def process_video(file: UploadFile = File(...)):
+    # React'ten gelen videoyu geçici olarak kaydet
+    temp_video_path = f"temp_{file.filename}"
+    with open(temp_video_path, "wb") as buffer:
+        buffer.write(await file.read())
 
+    output_srt = "altyazi.srt"
 
-if __name__ == "__main__":
-    video_dosyasi = "test_video.mp4"
-    generate_subtitles(video_dosyasi)
+    # Kaydedilen videoyu Whisper'a gönder
+    generate_subtitles(temp_video_path, output_srt)
+
+    # İşlem bitince videoyu temizle (yer kaplamaması için)
+    if os.path.exists(temp_video_path):
+        os.remove(temp_video_path)
+
+    # Oluşan SRT dosyasını kullanıcıya (React'e) geri döndür
+    return FileResponse(path=output_srt, media_type='application/x-subrip', filename=output_srt)
