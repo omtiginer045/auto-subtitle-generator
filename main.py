@@ -25,24 +25,28 @@ def format_time_vtt(seconds):
     return f"{hours:02}:{minutes:02}:{seconds_int:02}.{milliseconds:03}"
 
 
-def get_subtitles_data(video_path, translate=False):
+# translate(boolean) yerine target_language(string) alıyoruz
+def get_subtitles_data(video_path, target_language="none"):
     model_size = "small"
     print(f"[{model_size}] modeli CPU üzerine yükleniyor...")
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
 
     segments, info = model.transcribe(video_path, beam_size=5)
-    translator = GoogleTranslator(source='auto', target='tr') if translate else None
+
+    # Kullanıcı "none" (hiçbiri) dışında bir dil seçtiyse çevirmeni o dille başlat
+    translator = GoogleTranslator(source='auto', target=target_language) if target_language != "none" else None
 
     subtitles = []
     for index, segment in enumerate(segments, start=1):
         text = segment.text.strip()
-        if translate and text:
+
+        # Çevirmen aktifse metni çevir
+        if translator and text:
             try:
                 text = translator.translate(text)
             except Exception as e:
                 print(f"Çeviri hatası: {e}")
 
-        # Verileri yapılandırılmış sözlük (dictionary) formatına sokuyoruz
         subtitles.append({
             "id": index,
             "start": segment.start,
@@ -57,19 +61,16 @@ def get_subtitles_data(video_path, translate=False):
 @app.post("/upload-video/")
 async def process_video(
         file: UploadFile = File(...),
-        translate_to_tr: str = Form("false")
+        target_language: str = Form("none")  # React'ten gelecek yeni parametre
 ):
-    is_translation_requested = (translate_to_tr.lower() == "true")
-
     temp_video_path = f"temp_{file.filename}"
     with open(temp_video_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # SRT/VTT dosyası kaydetmek yerine, veriyi doğrudan RAM'de JSON'a çeviriyoruz
-    subtitles_data = get_subtitles_data(temp_video_path, translate=is_translation_requested)
+    # Seçilen dili fonksiyona iletiyoruz
+    subtitles_data = get_subtitles_data(temp_video_path, target_language=target_language)
 
     if os.path.exists(temp_video_path):
         os.remove(temp_video_path)
 
-    # React tarafına JSON verisi gönderiyoruz
     return JSONResponse(content={"subtitles": subtitles_data})

@@ -8,10 +8,11 @@ function App() {
   const [message, setMessage] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
   const [subtitleUrl, setSubtitleUrl] = useState(null)
-  const [translateTr, setTranslateTr] = useState(false)
-  const [subtitles, setSubtitles] = useState([])
 
-  // Yeni: Videonun o anki saniyesini tutacağımız state
+  // Yeni: Seçilen dili tutacak state (varsayılan: none)
+  const [targetLanguage, setTargetLanguage] = useState('none')
+
+  const [subtitles, setSubtitles] = useState([])
   const [currentTime, setCurrentTime] = useState(0)
   const videoRef = useRef(null)
 
@@ -23,7 +24,6 @@ function App() {
     setSubtitleUrl(null)
   }
 
-  // Yeni: Video oynarken saniyeyi sürekli state'e kaydet
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime)
@@ -43,11 +43,11 @@ function App() {
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true)
-    setMessage('Video işleniyor, lütfen bekleyin...')
+    setMessage(targetLanguage === 'none' ? 'Video işleniyor...' : 'Video işleniyor ve çevriliyor...')
 
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('translate_to_tr', translateTr)
+    formData.append('target_language', targetLanguage) // Backend'e seçilen dili gönderiyoruz
 
     try {
       const response = await axios.post('http://127.0.0.1:8000/upload-video/', formData)
@@ -55,7 +55,7 @@ function App() {
       setMessage('İşlem başarılı! Konuşulan satır sağda parlayacaktır.')
     } catch (error) {
       console.error(error)
-      setMessage('Bir hata oluştu.')
+      setMessage('Bir hata oluştu. Sunucu bağlantısını kontrol edin.')
     } finally {
       setLoading(false)
     }
@@ -72,21 +72,36 @@ function App() {
     }
   }
 
+  // Altyazı etiketi için yardımcı fonksiyon
+  const getLanguageLabel = () => {
+    const labels = { tr: 'Türkçe', de: 'Almanca', es: 'İspanyolca', fr: 'Fransızca', ja: 'Japonca' };
+    return labels[targetLanguage] || 'English';
+  }
+
   return (
     <div className="container">
-      <h1>Altyazı Stüdyosu v2</h1>
+      <h1>Altyazı Stüdyosu v3</h1>
 
       <div className="upload-box">
         <input type="file" accept="video/mp4,video/x-m4v,video/*" onChange={handleFileChange} />
-        <div className="checkbox-container">
-          <input
-            type="checkbox"
-            id="translateToggle"
-            checked={translateTr}
-            onChange={(e) => setTranslateTr(e.target.checked)}
-          />
-          <label htmlFor="translateToggle">İngilizce altyazıyı doğrudan Türkçe'ye çevir</label>
+
+        {/* Yeni Açılır Menü (Dropdown) */}
+        <div className="language-selector">
+          <label htmlFor="languageSelect">Altyazı Dili Seçin:</label>
+          <select
+            id="languageSelect"
+            value={targetLanguage}
+            onChange={(e) => setTargetLanguage(e.target.value)}
+          >
+            <option value="none">Sadece Metne Dök (İngilizce)</option>
+            <option value="tr">Türkçe (Turkish)</option>
+            <option value="de">Almanca (German)</option>
+            <option value="es">İspanyolca (Spanish)</option>
+            <option value="fr">Fransızca (French)</option>
+            <option value="ja">Japonca (Japanese)</option>
+          </select>
         </div>
+
         <button onClick={handleUpload} disabled={loading || !file}>
           {loading ? 'İşleniyor...' : 'Altyazı Çıkar'}
         </button>
@@ -97,7 +112,6 @@ function App() {
       {videoUrl && (
         <div className="studio-layout">
           <div className="video-section">
-            {/* onTimeUpdate eklendi: Video her aktığında saniyeyi kaydeder */}
             <video
               ref={videoRef}
               onTimeUpdate={handleTimeUpdate}
@@ -107,11 +121,17 @@ function App() {
             >
               <source src={videoUrl} type={file?.type || 'video/mp4'} />
               {subtitleUrl && (
-                <track kind="subtitles" src={subtitleUrl} srcLang={translateTr ? "tr" : "en"} label={translateTr ? "Türkçe" : "English"} default />
+                <track
+                  kind="subtitles"
+                  src={subtitleUrl}
+                  srcLang={targetLanguage === 'none' ? 'en' : targetLanguage}
+                  label={getLanguageLabel()}
+                  default
+                />
               )}
             </video>
             {subtitleUrl && (
-              <a href={subtitleUrl} download="altyazi.vtt" className="download-btn" style={{marginTop: "1rem"}}>
+              <a href={subtitleUrl} download={`altyazi_${targetLanguage === 'none' ? 'en' : targetLanguage}.vtt`} className="download-btn" style={{marginTop: "1rem"}}>
                 Düzenlenmiş Altyazıyı İndir (.vtt)
               </a>
             )}
@@ -119,12 +139,10 @@ function App() {
 
           {subtitles.length > 0 && (
             <div className="editor-section">
-              <h3>Altyazı Editörü</h3>
+              <h3>Altyazı Editörü ({getLanguageLabel()})</h3>
               <div className="editor-list">
                 {subtitles.map(sub => {
-                  // O anki saniye bu altyazının aralığında mı kontrol et
                   const isActive = currentTime >= sub.start && currentTime <= sub.end;
-
                   return (
                     <div key={sub.id} className={`editor-item ${isActive ? 'active-sub' : ''}`}>
                       <span className="time-badge" onClick={() => handleSeek(sub.start)}>

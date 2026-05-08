@@ -109,3 +109,33 @@
   transition: all 0.2s ease-in-out;
   border-left: 4px solid transparent;
 }
+.language-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.language-selector label {
+  color: #d1d5db;
+  font-size: 0.9rem;
+}
+
+.language-selector select {
+  padding: 10px;
+  border-radius: 5px;
+  background-color: #1f2937;
+  color: white;
+  border: 1px solid #4b5563;
+  width: 80%;
+  max-width: 300px;
+  font-size: 1rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.language-selector select:focus {
+  border-color: #3b82f6;
+}
